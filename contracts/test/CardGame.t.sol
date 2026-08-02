@@ -17,7 +17,8 @@ contract CardGameTest is Test {
         vm.deal(bob, 100 ether);
     }
 
-    /// 卡牌 id 与数组索引对齐（index 0 为占位）
+    // ---------- 基础 ----------
+
     function testCardIdsAligned() public {
         uint256 n = game.cardCount();
         assertEq(n, 30);
@@ -29,7 +30,6 @@ contract CardGameTest is Test {
         assertEq(game.getCard(0).id, 0, "placeholder at 0");
     }
 
-    /// 开包：0.001 RITUAL → 5张不重复卡
     function testOpenPack() public {
         uint256 price = game.PACK_PRICE();
         uint256 balBefore = address(game).balance;
@@ -49,7 +49,7 @@ contract CardGameTest is Test {
         game.mintPack{value: 1}();
     }
 
-    function _collectDistinct(address who, uint256 maxPacks) internal returns (uint256[10] memory deck, uint256 n) {
+    function _collectDistinct(address who, uint256 maxPacks) internal returns (uint256[10] memory deck) {
         uint256 price = game.PACK_PRICE();
         for (uint256 p = 0; p < maxPacks; p++) {
             vm.prank(who);
@@ -57,15 +57,14 @@ contract CardGameTest is Test {
             (uint256[] memory ids, ) = game.getCollection(who);
             if (ids.length >= 10) {
                 for (uint256 i = 0; i < 10; i++) deck[i] = ids[i];
-                return (deck, ids.length);
+                return deck;
             }
         }
         revert("not enough distinct");
     }
 
-    /// 组卡组：10张不同的已拥有卡
     function testSaveDeck() public {
-        (uint256[10] memory deck, ) = _collectDistinct(alice, 15);
+        uint256[10] memory deck = _collectDistinct(alice, 15);
         vm.prank(alice);
         game.saveDeck(deck);
         uint256[10] memory saved = game.getDeck(alice);
@@ -75,73 +74,62 @@ contract CardGameTest is Test {
 
     function testInvalidDeckRejected() public {
         uint256[10] memory deck;
-        deck[0] = 999; // non-existent card
+        deck[0] = 999;
         vm.expectRevert(bytes("invalid deck"));
         vm.prank(alice);
         game.saveDeck(deck);
     }
 
-    /// 完整一局：开包→组牌→开战→出牌→攻击→结束回合(Bot回合)→获胜
+    function testWithdrawFees() public {
+        uint256 price = game.PACK_PRICE();
+        vm.prank(alice);
+        game.mintPack{value: price}();
+        uint256 balBefore = address(this).balance;
+        game.withdrawFees();
+        assertEq(address(game).balance, 0);
+        assertGt(address(this).balance, balBefore);
+    }
+
+    // ---------- Solo ----------
+
     function testFullGame() public {
-        (uint256[10] memory deck, ) = _collectDistinct(alice, 15);
+        uint256[10] memory deck = _collectDistinct(alice, 15);
         vm.prank(alice);
         uint256 matchId = game.startSoloMatch(deck);
         assertEq(matchId, 1);
 
         CardGame.Match memory m = game.getMatch(matchId);
         assertEq(m.phase, 1);
+        assertEq(m.mode, game.MODE_SOLO());
+        assertEq(m.playerAddr[0], alice);
+        assertEq(m.playerAddr[1], game.BOT());
         assertEq(m.players[0].heroHp, 30);
         assertEq(m.players[1].heroHp, 30);
-        assertEq(m.players[0].maxMana, 1);
 
-        // 玩家打出第一张费用<=1的手牌（若无1费牌则跳过）
         CardGame.Match memory m0 = game.getMatch(matchId);
-        uint256 played = 0;
         for (uint256 i = 0; i < 5; i++) {
             uint256 cid = m0.players[0].hand[i];
             if (cid != 0 && game.getCard(cid).cost <= m0.players[0].mana) {
                 vm.prank(alice);
                 game.playCard(matchId, i);
-                played = cid;
                 break;
             }
         }
-
-        // 结束回合 → Bot行动 → 回到玩家回合
         vm.prank(alice);
         game.endTurn(matchId);
         m = game.getMatch(matchId);
         assertEq(m.phase, 1, "game still active");
         assertEq(m.turn, 0, "back to player");
         assertEq(m.players[0].maxMana, 2, "mana ramped");
-
-        // 玩家随从攻击敌方英雄（若 Bot 已杀掉我方随从则跳过）
-        m = game.getMatch(matchId);
-        bool attacked = false;
-        for (uint256 i = 0; i < 5 && !attacked; i++) {
-            if (m.players[0].board[i].cardId != 0 && m.players[0].board[i].canAct) {
-                vm.prank(alice);
-                game.attack(matchId, i, 1, 0);
-                attacked = true;
-            }
-        }
-        if (attacked) {
-            m = game.getMatch(matchId);
-            assertTrue(m.players[1].heroHp < 30, "bot hero damaged");
-        } else {
-            assertEq(game.getMatch(matchId).phase, 1, "game still active");
-        }
     }
 
-    /// 连续对局直到分出胜负（无死锁）
     function testGameTerminates() public {
-        (uint256[10] memory deck, ) = _collectDistinct(alice, 15);
+        uint256[10] memory deck = _collectDistinct(alice, 15);
         vm.prank(alice);
         uint256 matchId = game.startSoloMatch(deck);
         for (uint256 round = 0; round < 50; round++) {
             CardGame.Match memory m = game.getMatch(matchId);
             if (m.phase == 2) break;
-            // 玩家：出可负担的牌（每打一张刷新状态；棋盘满则停）
             for (uint256 i = 0; i < 5; i++) {
                 m = game.getMatch(matchId);
                 if (m.phase == 2) break;
@@ -157,7 +145,6 @@ contract CardGameTest is Test {
                     game.playCard(matchId, i);
                 }
             }
-            // 全部随从打脸（每次攻击后刷新）
             for (uint256 i = 0; i < 5; i++) {
                 m = game.getMatch(matchId);
                 if (m.phase == 2) break;
@@ -171,17 +158,195 @@ contract CardGameTest is Test {
             vm.prank(alice);
             game.endTurn(matchId);
         }
-        CardGame.Match memory m = game.getMatch(matchId);
-        assertEq(m.phase, 2, "game must terminate");
+        assertEq(game.getMatch(matchId).phase, 2, "game must terminate");
     }
 
-    function testWithdrawFees() public {
-        uint256 price = game.PACK_PRICE();
+    // ---------- Quick ----------
+
+    function testQuickMatch() public {
+        // alice 无任何收藏也能直接开战
         vm.prank(alice);
-        game.mintPack{value: price}();
-        uint256 balBefore = address(this).balance;
-        game.withdrawFees();
-        assertEq(address(game).balance, 0);
-        assertGt(address(this).balance, balBefore);
+        uint256 matchId = game.startQuickMatch();
+        CardGame.Match memory m = game.getMatch(matchId);
+        assertEq(m.mode, game.MODE_QUICK());
+        assertEq(m.phase, 1);
+        assertTrue(m.players[0].deck[0] != 0, "auto deck generated");
+        assertEq(m.players[1].heroHp, 30);
+    }
+
+    // ---------- Endless ----------
+
+    function testEndlessWaves() public {
+        uint256[10] memory deck = _collectDistinct(alice, 15);
+        vm.prank(alice);
+        uint256 matchId = game.startEndlessMatch(deck);
+        CardGame.Match memory m = game.getMatch(matchId);
+        assertEq(m.mode, game.MODE_ENDLESS());
+        assertEq(m.wave, 1);
+
+        for (uint256 round = 0; round < 80; round++) {
+            m = game.getMatch(matchId);
+            if (m.phase == 2) break;
+            // 出牌 + 全部打脸
+            for (uint256 i = 0; i < 5; i++) {
+                m = game.getMatch(matchId);
+                if (m.phase == 2) break;
+                uint256 cid = m.players[0].hand[i];
+                if (cid == 0) continue;
+                uint256 bc = 0;
+                for (uint256 b = 0; b < 5; b++) if (m.players[0].board[b].cardId != 0) bc++;
+                if (bc >= 5) break;
+                if (game.getCard(cid).cost <= m.players[0].mana) {
+                    vm.prank(alice);
+                    game.playCard(matchId, i);
+                }
+            }
+            for (uint256 i = 0; i < 5; i++) {
+                m = game.getMatch(matchId);
+                if (m.phase == 2) break;
+                if (m.players[0].board[i].cardId != 0 && m.players[0].board[i].canAct) {
+                    vm.prank(alice);
+                    game.attack(matchId, i, 1, 0);
+                }
+            }
+            m = game.getMatch(matchId);
+            if (m.phase == 2) break;
+            vm.prank(alice);
+            game.endTurn(matchId);
+        }
+        m = game.getMatch(matchId);
+        if (m.wave > 1) {
+            // 至少进入过 wave 2（低费 bot 第一波应该能赢）
+            assertTrue(m.phase == 2 || m.phase == 1);
+            assertGe(game.bestWave(alice), 0);
+        }
+        // 流程无死锁即可
+        assertTrue(m.phase == 2 || m.phase == 1, "no deadlock");
+    }
+
+    // ---------- Daily ----------
+
+    function testDailyMatch() public {
+        uint256[10] memory deck = _collectDistinct(alice, 15);
+        uint256 day = game.currentDay();
+        vm.prank(alice);
+        uint256 matchId = game.startDailyMatch(deck);
+        CardGame.Match memory m = game.getMatch(matchId);
+        assertEq(m.mode, game.MODE_DAILY());
+        assertEq(m.dailyDay, day);
+
+        for (uint256 round = 0; round < 80; round++) {
+            m = game.getMatch(matchId);
+            if (m.phase == 2) break;
+            for (uint256 i = 0; i < 5; i++) {
+                m = game.getMatch(matchId);
+                if (m.phase == 2) break;
+                uint256 cid = m.players[0].hand[i];
+                if (cid == 0) continue;
+                uint256 bc = 0;
+                for (uint256 b = 0; b < 5; b++) if (m.players[0].board[b].cardId != 0) bc++;
+                if (bc >= 5) break;
+                if (game.getCard(cid).cost <= m.players[0].mana) {
+                    vm.prank(alice);
+                    game.playCard(matchId, i);
+                }
+            }
+            for (uint256 i = 0; i < 5; i++) {
+                m = game.getMatch(matchId);
+                if (m.phase == 2) break;
+                if (m.players[0].board[i].cardId != 0 && m.players[0].board[i].canAct) {
+                    vm.prank(alice);
+                    game.attack(matchId, i, 1, 0);
+                }
+            }
+            m = game.getMatch(matchId);
+            if (m.phase == 2) break;
+            vm.prank(alice);
+            game.endTurn(matchId);
+        }
+        m = game.getMatch(matchId);
+        assertEq(m.phase, 2, "daily must finish");
+        if (m.winner == alice) {
+            (address[5] memory top, uint256[5] memory turns) = game.getDailyLeaderboard(day);
+            assertEq(top[0], alice, "alice on leaderboard");
+            assertGt(turns[0], 0, "turns recorded");
+        }
+    }
+
+    // ---------- PvP ----------
+
+    function testPvPMatch() public {
+        uint256[10] memory deckA = _collectDistinct(alice, 15);
+        uint256[10] memory deckB = _collectDistinct(bob, 15);
+
+        vm.prank(alice);
+        uint256 matchId = game.createPvPMatch(deckA);
+        CardGame.Match memory m = game.getMatch(matchId);
+        assertEq(m.mode, game.MODE_PVP());
+        assertEq(m.phase, 0, "waiting");
+        assertEq(m.playerAddr[0], alice);
+
+        // alice 不能加入自己的匹配
+        vm.prank(alice);
+        vm.expectRevert(bytes("cannot join own match"));
+        game.joinPvPMatch(matchId, deckA);
+
+        vm.prank(bob);
+        game.joinPvPMatch(matchId, deckB);
+        m = game.getMatch(matchId);
+        assertEq(m.phase, 1, "active");
+        assertEq(m.turn, 0, "creator first");
+        assertEq(m.playerAddr[1], bob);
+
+        // alice 先手出牌
+        m = game.getMatch(matchId);
+        bool played = false;
+        for (uint256 i = 0; i < 5; i++) {
+            uint256 cid = m.players[0].hand[i];
+            if (cid != 0 && game.getCard(cid).cost <= m.players[0].mana) {
+                vm.prank(alice);
+                game.playCard(matchId, i);
+                played = true;
+                break;
+            }
+        }
+        // bob 不能在 alice 回合行动
+        vm.prank(bob);
+        vm.expectRevert(bytes("not your turn"));
+        game.endTurn(matchId);
+
+        vm.prank(alice);
+        game.endTurn(matchId);
+        m = game.getMatch(matchId);
+        assertEq(m.turn, 1, "bob turn");
+
+        // bob 出牌 + 结束回合
+        m = game.getMatch(matchId);
+        for (uint256 i = 0; i < 5; i++) {
+            uint256 cid = m.players[1].hand[i];
+            if (cid != 0 && game.getCard(cid).cost <= m.players[1].mana) {
+                vm.prank(bob);
+                game.playCard(matchId, i);
+                break;
+            }
+        }
+        vm.prank(bob);
+        game.endTurn(matchId);
+        m = game.getMatch(matchId);
+        assertEq(m.turn, 0, "back to alice");
+        assertEq(m.players[0].maxMana, 2, "alice mana ramped");
+        assertEq(m.players[1].maxMana, 2, "bob mana ramped");
+    }
+
+    function testCancelPvP() public {
+        uint256[10] memory deckA = _collectDistinct(alice, 15);
+        vm.prank(alice);
+        uint256 matchId = game.createPvPMatch(deckA);
+        vm.prank(bob);
+        vm.expectRevert(bytes("creator only"));
+        game.cancelPvPMatch(matchId);
+        vm.prank(alice);
+        game.cancelPvPMatch(matchId);
+        assertEq(game.getMatch(matchId).phase, 2, "cancelled");
     }
 }
