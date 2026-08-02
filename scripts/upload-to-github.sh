@@ -4,7 +4,7 @@
 # 用法: GH_PAT=<token> bash scripts/upload-to-github.sh [file...]  （不传文件 = 全部已跟踪文件）
 set -euo pipefail
 
-REPO="seve789/ritual-arcana"
+REPO="seve789/ritual-arcana-card"
 : "${GH_PAT:?请先设置 GH_PAT 环境变量}"
 
 cd "$(dirname "$0")/.."
