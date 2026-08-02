@@ -59,12 +59,12 @@ export default function Page() {
   };
 
   return (
-    <main className="min-h-screen bg-arena font-body">
+    <main className="min-h-screen bg-arena bg-mascot font-body">
       {/* 顶栏 */}
       <header className="border-b border-gray-800/80">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <span className="text-2xl text-ritual-green">◈</span>
+            <img src="/favicon.webp" alt="Ritual mascot" className="w-9 h-9 rounded-lg shadow-glow-green" />
             <div>
               <h1 className="font-display text-lg text-gray-100 tracking-wide leading-none">RITUAL ARCANA CARD</h1>
               <p className="text-[10px] font-mono text-gray-500 uppercase tracking-widest mt-1">Chain 1979 · On-Chain Card Game</p>
@@ -140,9 +140,11 @@ export default function Page() {
           {/* 未连接提示 */}
           {!isConnected && (
             <div className="text-center py-24">
-              <div className="text-6xl mb-6 text-ritual-green animate-pulse-green inline-flex w-20 h-20 items-center justify-center rounded-2xl border border-ritual-green/30">
-                ◈
-              </div>
+              <img
+                src="/favicon.webp"
+                alt="Ritual mascot"
+                className="w-24 h-24 mx-auto mb-6 rounded-2xl animate-mascot"
+              />
               <h2 className="font-display text-3xl text-gray-100 mb-2">RITUAL ARCANA CARD</h2>
               <p className="text-gray-400 max-w-md mx-auto mb-8">
                 开卡包收集 30 张 Ritual 主题随从卡，组 10 张卡组，挑战链上 AI —— 全部状态存在 Ritual Chain 上。
