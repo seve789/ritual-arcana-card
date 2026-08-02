@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-display: 'Archivo Black', system-ui, sans-serif;
+  --font-body: 'Barlow', 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+body {
+  background: #000000;
+  color: #d1d5db;
+  font-family: var(--font-body);
+}
+
+/* subtle noise/grid atmosphere */
+.bg-arena {
+  background:
+    radial-gradient(ellipse 60% 40% at 50% -10%, rgba(25, 209, 132, 0.08), transparent),
+    radial-gradient(ellipse 50% 30% at 90% 110%, rgba(255, 29, 206, 0.06), transparent),
+    #000000;
+}
+
+@keyframes pulse-green {
+  0%, 100% { box-shadow: 0 0 20px -6px rgba(25, 209, 132, 0.4); }
+  50% { box-shadow: 0 0 34px -4px rgba(25, 209, 132, 0.75); }
+}
+.animate-pulse-green { animation: pulse-green 2s ease-in-out infinite; }
+
+@keyframes pack-flip {
+  0% { transform: rotateY(0deg); opacity: 1; }
+  100% { transform: rotateY(180deg); opacity: 1; }
+}
+.animate-pack { animation: pack-flip 0.6s ease-in-out; }
+
+@keyframes fade-up {
+  from { transform: translateY(8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.animate-fade-up { animation: fade-up 0.3s ease-out; }
+
+/* scrollbar */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #000; }
+::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
