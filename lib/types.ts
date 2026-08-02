@@ -15,16 +15,20 @@ export interface PlayerState {
   deck: readonly bigint[];
   hand: readonly bigint[];
   board: MinionState[];
-  isBot: boolean;
 }
 
 export interface MatchState {
   id: bigint;
-  players: [PlayerState, PlayerState];
+  mode: number; // 0=solo 1=pvp 2=endless 3=daily 4=quick
+  phase: number; // 0=waiting(pvp) 1=active 2=finished
   turn: bigint;
   seed: bigint;
-  phase: number;
   winner: string;
+  playerAddr: [string, string];
+  wave: bigint;
+  turnCount: bigint;
+  dailyDay: bigint;
+  players: [PlayerState, PlayerState];
 }
 
 export interface BattleLogEntry {
@@ -36,3 +40,11 @@ export interface BattleLogEntry {
 }
 
 export const BOT_ADDRESS = '0x0000000000000000000000000000000000000B0B';
+
+export const MODE_LABEL: Record<number, string> = {
+  0: 'Solo',
+  1: 'PvP',
+  2: 'Endless',
+  3: 'Daily',
+  4: 'Quick',
+};
