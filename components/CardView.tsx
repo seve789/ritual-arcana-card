@@ -75,6 +75,13 @@ export default function CardView({
         'select-none',
       ].join(' ')}
     >
+      {/*
+        // 官方吉祥物（Ritual 标志）作为卡牌水印
+      */}
+      <div className="card-watermark">
+        <img src="/favicon.webp" alt="" className="w-16 h-16" />
+      </div>
+
       {/* 费用 */}
       <div className="absolute -top-2 -left-2 flex items-center justify-center w-6 h-6 rounded-full bg-ritual-surface border border-ritual-gold text-ritual-gold font-mono text-xs font-semibold">
         {meta.cost}
