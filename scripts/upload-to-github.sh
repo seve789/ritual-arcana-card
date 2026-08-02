@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# 通过 GitHub Contents API 上传/更新仓库文件。
-# 适用于 github.com git 协议被网络限制的环境（api.github.com 可达时）。
+# 通过 GitHub Contents API 上传/更新仓库文件（绕过被墙的 git 协议）。
+# 自动获取已存在文件的 sha 以支持更新（PUT with sha）。
 # 用法: GH_PAT=<token> bash scripts/upload-to-github.sh [file...]  （不传文件 = 全部已跟踪文件）
 set -euo pipefail
 
@@ -23,7 +23,15 @@ for f in $FILES; do
     continue
   fi
   b64=$(base64 -w0 "$f")
-  code=$(printf '{"message":"chore: upload %s","content":"%s"}' "$f" "$b64" | \
+  # 获取已存在文件的 sha（不存在则 GET 返回 404，sha 为空）
+  sha=$(curl -s -u "$GH_PAT:x-oauth-basic" -H "Accept: application/vnd.github+json" \
+    "https://api.github.com/repos/$REPO/contents/$f" | grep -o '"sha": "[a-f0-9]\{40\}"' | head -1 | cut -d'"' -f4 || true)
+  if [ -n "$sha" ]; then
+    body=$(printf '{"message":"chore: upload %s","content":"%s","sha":"%s"}' "$f" "$b64" "$sha")
+  else
+    body=$(printf '{"message":"chore: upload %s","content":"%s"}' "$f" "$b64")
+  fi
+  code=$(printf '%s' "$body" | \
     curl -s -o /dev/null -w "%{http_code}" -X PUT \
       -u "$GH_PAT:x-oauth-basic" \
       -H "Accept: application/vnd.github+json" \
