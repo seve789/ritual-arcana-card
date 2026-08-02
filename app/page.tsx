@@ -19,11 +19,12 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
 
 export default function Page() {
   const { address, isConnected } = useAccount();
-  const { connect, connectors, isPending: connectPending } = useConnect();
+  const { connectAsync, connectors, isPending: connectPending } = useConnect();
   const { disconnect } = useDisconnect();
   const chainId = useChainId();
   const { switchChain, isPending: switchPending } = useSwitchChain();
   const [tab, setTab] = useState<Tab>('collection');
+  const [walletError, setWalletError] = useState<string | null>(null);
 
   const { data: collection } = useReadContract({
     address: GAME_ADDRESS,
@@ -35,6 +36,27 @@ export default function Page() {
 
   const wrongChain = isConnected && chainId !== ritualChain.id;
   const shortAddr = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
+
+  const hasWallet = typeof window !== 'undefined' && typeof (window as any).ethereum !== 'undefined';
+
+  const handleConnect = async () => {
+    setWalletError(null);
+    const connector = connectors[0];
+    if (!hasWallet) {
+      setWalletError('未检测到钱包扩展 —— 请先安装 MetaMask（或任意 Web3 钱包），然后刷新本页。');
+      return;
+    }
+    if (!connector || connector.ready === false) {
+      setWalletError('检测到钱包但当前不可用（可能被浏览器隐私模式禁用）。请检查钱包扩展状态后刷新。');
+      return;
+    }
+    try {
+      await connectAsync({ connector });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '连接失败';
+      setWalletError(msg.includes('rejected') || msg.includes('denied') ? '连接被拒绝 —— 请在钱包弹窗中点击批准。' : msg.split('\n')[0]);
+    }
+  };
 
   return (
     <main className="min-h-screen bg-arena font-body">
@@ -69,7 +91,7 @@ export default function Page() {
               </>
             ) : (
               <button
-                onClick={() => connect({ connector: connectors[0] })}
+                onClick={handleConnect}
                 disabled={connectPending}
                 className="border border-ritual-green text-ritual-green hover:bg-ritual-green/10 px-5 py-2 rounded-lg font-semibold text-sm shadow-glow-green disabled:opacity-40"
               >
@@ -78,6 +100,23 @@ export default function Page() {
             )}
           </div>
         </div>
+        {walletError && (
+          <div className="max-w-6xl mx-auto px-4 py-2">
+            <div className="flex flex-wrap items-center justify-between gap-3 border border-ritual-gold/40 rounded-lg px-4 py-2.5 bg-ritual-gold/5 text-sm">
+              <span className="text-ritual-gold">⚠ {walletError}</span>
+              {!hasWallet && (
+                <a
+                  href="https://metamask.io/download/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-ritual-green border border-ritual-green/50 hover:bg-ritual-green/10 px-4 py-1.5 rounded-lg text-xs font-semibold"
+                >
+                  去安装 MetaMask →
+                </a>
+              )}
+            </div>
+          </div>
+        )}
       </header>
 
       {/* 链守卫 */}
@@ -109,11 +148,20 @@ export default function Page() {
                 开卡包收集 30 张 Ritual 主题随从卡，组 10 张卡组，挑战链上 AI —— 全部状态存在 Ritual Chain 上。
               </p>
               <button
-                onClick={() => connect({ connector: connectors[0] })}
+                onClick={handleConnect}
                 className="border border-ritual-green text-ritual-green hover:bg-ritual-green/10 px-8 py-3 rounded-lg font-semibold"
               >
                 连接钱包开始
               </button>
+              {!hasWallet && (
+                <p className="text-gray-500 text-xs mt-4">
+                  需要浏览器钱包（如{' '}
+                  <a href="https://metamask.io/download/" target="_blank" rel="noreferrer" className="text-ritual-green hover:underline">
+                    MetaMask
+                  </a>
+                  ）才能游玩 —— 安装后刷新页面
+                </p>
+              )}
             </div>
           )}
 
